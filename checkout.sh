@@ -1,6 +1,6 @@
 #!/bin/bash
 #####
-# V1.0.0
+# V2.0.0
 #####
 set -m
 declare gitCheckout="git checkout"
@@ -18,157 +18,183 @@ declare currentBranch=""
 declare branchPrefix=""
 declare branchName=""
 
-displayCheckoutOptions()
-{
+displayCheckoutOptions() {
 	echo -e "\e[36mPress 'ENTER' to only checkout branch. Otherwise select an option:\e[0m"
 	echo -e "\e[36m1 - to fetch & pull.\e[0m"
 	echo -e "\e[36m2 - to fetch.\e[0m"
 	echo -e "\e[36m3 - to pull.\e[0m"
 	echo -e "\e[36m4 - to create new branch off latest changes. (This will include option 1.)\e[0m"
 	echo -e "\e[36m5 - to create new branch off local changes.\e[0m"
-	read -r response		
+	read -r response
 	case $response in
-		1) echo -e "\e[32m### Fetching ###\e[0m"; $gitFetch; echo -e "\e[32m### Pulling ###\e[0m"; $gitPull;;
-		2) echo -e "\e[32m### Fetching ###\e[0m"; $gitFetch;;
-		3) echo -e "\e[32m### Pulling ###\e[0m"; $gitPull;;
-		4) echo -e "\e[32m### Fetching ###\e[0m"; $gitFetch; echo -e "\e[32m### Pulling ###\e[0m"; $gitPull; setBranchPrefix; setBranchName; echo -e "\e[36m### Creating New Branch. ###\e[0m"; checkoutNewBranch;;
-		5) echo -e "\e[36m### Creating New Branch. ###\e[0m"; setBranchPrefix; setBranchName; checkoutNewBranch;;
+	1)
+		echo -e "\e[32m### Fetching ###\e[0m"
+		$gitFetch
+		echo -e "\e[32m### Pulling ###\e[0m"
+		$gitPull
+		;;
+	2)
+		echo -e "\e[32m### Fetching ###\e[0m"
+		$gitFetch
+		;;
+	3)
+		echo -e "\e[32m### Pulling ###\e[0m"
+		$gitPull
+		;;
+	4)
+		echo -e "\e[32m### Fetching ###\e[0m"
+		$gitFetch
+		echo -e "\e[32m### Pulling ###\e[0m"
+		$gitPull
+		checkoutNewBranch
+		;;
+	5)
+		checkoutNewBranch
+		;;
 	esac
+	return 0
 }
 
-getBranchArray()
-{
+getBranchArray() {
 	local -n _arr=$1
 	consoleOut=$(git branch 2>&1)
 	readarray -t array <<<"$consoleOut"
-	for branch in "${array[@]}";
-	do
-		_arr+=("$(printf '%s\n' "${branch//[[:space:]]}")")		
+	for branch in "${array[@]}"; do
+		_arr+=("$(printf '%s\n' "${branch//[[:space:]]/}")")
 	done
 }
 
-checkBranchMatches()
-{
+checkBranchMatches() {
 	local -n _arr2=$1
 	local branchArray
-	getBranchArray branchArray	
-	for branch in "${branchArray[@]}";
-	do	
-		if [[ $branch == *"$branchName" ]];
-			then								
-				_arr2+=("$branch")
-		fi		
+	getBranchArray branchArray
+	for branch in "${branchArray[@]}"; do
+		if [[ $branch == *"$branchName" ]]; then
+			_arr2+=("$branch")
+		fi
 	done
 }
 
-checkoutBranch()
-{
+checkoutBranch() {
 	local branchMatches
 	checkBranchMatches branchMatches
-	if [[ ${#branchMatches[@]} == 1 ]];
-	then		
-		checkout "${branchMatches[0]}"
-		validateMessage "$?"
-		if validateMessage;
-		then
-			echo -e "\e[32m### Checking out '${branchMatches[0]}'. ###\e[0m"
-			exit 0
-		fi
-	fi	
 
-	if [[ ${#branchMatches[@]} -gt 1 ]];
-	then
-		index=0		
-		echo -e "\e[35m### Several branches matched! Please select from the list. ###\e[0m"		
-		for branch in "${branchMatches[@]}";
-		do
-		optionList+=("$branch")
-		item=$((index+1))
-		echo -e "\e[36m$item - $branch\e[0m"
-		index+=1
-		done
-		read -r response
-
-		checkout "${optionList[$((response-1))]}"				
-		validateMessage "$?"
-		if validateMessage;
-		then
-			echo -e "\e[32m### Checking out '${branch}' ###\e[0m"
-		elif [[ $? == 2 ]];
-		then
-			echo -e "\e[32m### Please commit or stash changes. ###\e[0m"
-		fi
-	fi	
-		exit 0
-}
-
-checkoutNewBranch()
-{
-	branch="$branchPrefix$userName$branchName"
-	ERROR="$($gitCheckout "-b" $branch 2>&1)"
-	validateMessage "$?"
-	if validateMessage;
-	then
-		echo -e "\e[32m### Branch '${branch}' created ###\e[0m"
-	elif [[ $? == 2 ]];
-	then
-		echo -e "\e[32m### Something Went Wrong ###\e[0m"
+	if [[ ${#branchMatches[@]} == 1 ]]; then
+		checkout "${branchMatches[0]/\*/}" #remove asterix
+		exit
 	fi
-		exit 0
+
+	index=0
+	for branch in "${branchMatches[@]}"; do
+		if [[ $branch != *\** ]]; then
+			optionList+=("$branch")
+			((index += 1))
+		fi
+	done
+
+	if [[ index -le 1 ]]; then
+		branch="${optionList[$((0))]}"
+	else
+		echo -e "\e[35m### Several branches matched! Please select from the list. ###\e[0m"
+		index=0
+		for option in "${optionList[@]}"; do
+			item=$((index + 1))
+			((index += 1))
+			echo -e "\e[36m$item - $option\e[0m"
+		done
+
+		read -r response
+		branch="${optionList[$((response - 1))]}"
+	fi
+
+	checkout "$branch"
+	exit
 }
 
-getCurrentBranch()
-{	
-	currentBranch="$($gitBranch --show-current)"	
+checkoutNewBranch() {
+	echo -e "\e[1;35m### Creating New Branch off '$currentBranch' ###\e[0m"
+	setBranchPrefix
+
+	echo -e "\e[33mDo you want to use the existing name? (y/n)\e[0m"
+	read -r response
+
+	case $response in
+	"y")
+		string1="*\/*\/"
+		branchName="${currentBranch/$string1/}"
+		;;
+	"n")
+		setBranchName
+		;;
+	esac
+
+	branch="$branchPrefix$userName$branchName"
+	checkout 0
+	echo -e "\e[32m### Branch '${branch}' created ###\e[0m"
+	return
 }
 
-setBranchName()
-{
-	echo -e "\e[32mPlease enter a branch name. (without prefix)\e[0m"	
+getCurrentBranch() {
+	currentBranch="$($gitBranch --show-current)"
+}
+
+setBranchName() {
+	echo -e "\e[32mPlease enter a branch name. (without prefix)\e[0m"
 	read -r response
 	branchName=$response
 }
 
-checkout()
-{
-	ERROR="$($gitCheckout "$1" 2>&1)"
+checkout() {
+	if [[ "$1" == 0 ]]; then
+		ERROR="$($gitCheckout "-b" $branch 2>&1)"
+	else
+		echo -e "\e[32m### Checking Out '$1' ###\e[0m"
+		ERROR="$($gitCheckout "$1" 2>&1)"
+	fi
+
+	if validateMessage; then
+		return
+	fi
+	exit
 }
 
-validateMessage()
-{
-	if [[ $ERROR == *"Switched to"* ]]; #success
-	then		
+validateMessage() {
+
+	if [[ $ERROR == *"Switched to"* ]]; then #success
 		return 0
 	fi
 
-	if [[ $ERROR == *"pathspec"* ]]; #file not found
-	then
-		echo -e "\e[31m***ERROR*** - Branch not found.\e[0m"
+	if [[ $ERROR == *"Already on"* ]]; then #branch already checked out
+		echo -e "\e[33m***WARNING*** - Already on requested branch.\e[0m"
 		return 1
 	fi
 
-	if [[ $ERROR == *"commit your changes"* ]]; #changes not committed
-	then
-		echo -e "\e[31m***ERROR*** - Changes are not committed. Aborting checkout.\e[0m"
+	if [[ $ERROR == *"pathspec"* ]]; then #file not found
+		echo -e "\e[31m***ERROR*** - Branch not found.\e[0m"
 		return 2
-	fi	
-	
-	if [[ $ERROR == *"fatal: not a git repository"* ]]; #repo doesn't exist
-	then
-		echo -e "\e[31m***ERROR*** - Repository does not exist.\e[0m"
+	fi
+
+	if [[ $ERROR == *"commit your changes"* ]]; then #changes not committed
+		echo -e "\e[31m***ERROR*** - Changes are not committed. Aborting checkout.\e[0m"
 		return 3
 	fi
-		if [[ $ERROR == *"command not found"* ]]; #repo doesn't exist
-	then
-		echo -e "\e[31m***ERROR*** - Command syntax error.\e[0m"
+
+	if [[ $ERROR == *"fatal: not a git repository"* ]]; then #repo doesn't exist
+		echo -e "\e[31m***ERROR*** - Repository does not exist.\e[0m"
 		return 4
 	fi
-	echo -e "\e[31m***ERROR*** - Unknown Error.\e[0m" #run in debug to catch error
+
+	if [[ $ERROR == *"command not found"* ]]; then #command not found
+		echo -e "\e[31m***ERROR*** - Command syntax error.\e[0m"
 		return 5
+	fi
+
+	echo -e "\e[31m***ERROR*** - Unknown Error.\e[0m" #run in debug to catch error
+	echo -e "\e[32m$ERROR\e[0m"
+	return 6
 }
 
-setBranchPrefix()
-{
+setBranchPrefix() {
 	echo -e "\e[32mPlease select a branch prefix.\e[0m"
 	echo -e "\e[36m1 - $feature\e[0m"
 	echo -e "\e[36m2 - $merge\e[0m"
@@ -178,59 +204,65 @@ setBranchPrefix()
 	echo -e "\e[36m6 - create custom\e[0m"
 	read -r response
 	case $response in
-		1) branchPrefix=$feature;;
-		2) branchPrefix=$merge;;
-		3) branchPrefix=$rebase;;
-		4) branchPrefix=$revert;;
-		5) branchPrefix=$hotfix;;
-		6) echo -e "\e[32mEnter branch prefix. (without branch name)\e[0m";read -r branchPrefix;;		
+	1) branchPrefix=$feature ;;
+	2) branchPrefix=$merge ;;
+	3) branchPrefix=$rebase ;;
+	4) branchPrefix=$revert ;;
+	5) branchPrefix=$hotfix ;;
+	6)
+		echo -e "\e[32mEnter branch prefix. (without branch name)\e[0m"
+		read -r branchPrefix
+		;;
 	esac
 }
 
-switchToDevelopBranch()
-{	
-		echo -e "\e[33mDo you want to checkout 'develop'? (y/n)\e[0m"
-		read -r response
-		case $response in
-			"y") echo -e "\e[32m### Checking Out 'develop' ###\e[0m";checkout "$branchName";return 0;;
-			"n") setBranchName;checkoutBranch;return 0;;
-		esac	
+createNewBranch() {
+	echo -e "\e[35m### Creating New Branch ###\e[0m"
+	echo -e "\e[33mDo you want to branch off 'develop'? (y/n)\e[0m"
+	read -r response
+	case $response in
+	"y")
+		checkout "$develop"
+		displayCheckoutOptions
+		return
+		;;
+	"n")
+		checkoutNewBranch
+		return
+		;;
+	esac
 }
 
-checkoutControl()
-{
-	if [[ "$1" == "" ]];
-	then
-		branchName=$develop
-	fi
-	#
-	# If arg is nothing or develop and the branch is not develop, check if switching to develop.
-	# If code is 0 then develop checked out. Exit script.
-	#
-	if [[ $branchName == "" || $branchName == "$develop" && $currentBranch != "$develop" ]];
-	then
-		
-		if switchToDevelopBranch;
-		then
-		validateMessage "$ERROR"
-		displayCheckoutOptions
-		exit 0
-		fi
+checkoutControl() {
+
+	#*** CREATE NEW BRANCHES ***#
+
+	if [[ "$branchName" == "" && "$currentBranch" != "$develop" ]]; then
+		createNewBranch
+		exit
 	fi
 
-	#If arg is nothing or develop and the branch is develop, then display checkout options.
-	if [[ $branchName == "" || $branchName == "$develop" && $currentBranch == "$develop" ]];
-	then	
+	#*** CHECKOUT BRANCHES ***#
+
+	# If arg is develop and current not develop switch to develop
+	if [[ "$branchName" == "$develop" && "$currentBranch" != "$develop" ]]; then
+		checkout "$develop"
 		displayCheckoutOptions
-		exit 0
+		exit
+	fi
+
+	# If arg is nothing or develop and the branch is develop, then display checkout options.
+	if [[ ("$branchName" == "" || "$branchName" == "$develop") && "$currentBranch" == "$develop" ]]; then
+		displayCheckoutOptions
+		exit
 	fi
 
 	checkoutBranch
-	exit 0
+	exit
 }
 
 # ********** START ********** #
 getCurrentBranch
 branchName="$1"
-checkoutControl "$branchName"
-exit 0
+checkoutControl
+exit
