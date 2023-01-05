@@ -211,7 +211,8 @@ setBranchPrefix() {
 	5) branchPrefix=$hotfix ;;
 	6)
 		echo -e "\e[32mEnter branch prefix. (without branch name)\e[0m"
-		read -r branchPrefix
+		read -r response
+		branchPrefix="${response}/"
 		;;
 	esac
 }

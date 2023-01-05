@@ -2,6 +2,10 @@
 
 ## Versions
 
+### 2.0.1
+
+~ fix custom branch missing "/"
+
 ### 2.0.0
 large refactor of code logic
 
